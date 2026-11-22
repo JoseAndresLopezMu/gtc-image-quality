@@ -175,7 +175,7 @@ Cada paso termina con tests en verde, se revisa antes de subirse y se anota en `
 
 | Paso | Contenido |
 |---|---|
-| 1 | Especificación, `CLAUDE.md` y bitácora (sin código) |
+| 1 | Especificación, guía de desarrollo (`CONTRIBUTING.md`) y bitácora (sin código) |
 | 2 | Estructura, CI, manifiesto a partir del CSV del archivo, comandos `fetch` e `index`, lectura de cabeceras y preparación del crudo (5.0) |
 | 3 | Generador de imágenes sintéticas, selección de estrellas y medidas (FWHM, elipticidad, fondo), validadas con sintéticos |
 | 4 | Medidas sobre los datos reales y reglas de control de calidad |
@@ -196,7 +196,7 @@ Cada paso termina con tests en verde, se revisa antes de subirse y se anota en `
 3. **Noches:** bloque 0037 del 19-20 de julio de 2025 como principal (sección 4.2).
 4. **Saturación:** píxeles a 65535 ADU en el crudo (sección 5.0). Se resuelve con la decisión 1.
 
-### Pendiente de decisión del autor (paso 3)
+### Decisiones del paso 3
 
-5. **Elipticidad: del ajuste en lugar de por momentos.** La sección 5.3 define la elipticidad por momentos de segundo orden. Medido con estrellas sintéticas, los momentos con ventana gaussiana redonda la subestiman mucho (error de hasta 0,23 para una elipticidad real de 0,3) y no cumplen el criterio de la sección 7 (error < 0,02). La elipticidad del ajuste de Moffat sí lo cumple (error ≤ 0,011 en todo el rango). Propuesta: usar la del ajuste como medida principal y guardar la de momentos solo como referencia. El código ya lo hace así y es reversible.
+5. **Elipticidad: del ajuste en lugar de por momentos.** *Decisión tomada: se adopta la propuesta.* La sección 5.3 define la elipticidad por momentos de segundo orden. Medido con estrellas sintéticas, los momentos con ventana gaussiana redonda la subestiman mucho (error de hasta 0,23 para una elipticidad real de 0,3) y no cumplen el criterio de la sección 7 (error < 0,02). La elipticidad del ajuste de Moffat sí lo cumple (error ≤ 0,011 en todo el rango). La del ajuste es la medida principal; la de momentos se guarda solo como referencia.
 6. **Límites físicos del ajuste:** alpha de Moffat entre 0,5 y 30 px, beta entre 1,2 y 10, centro a menos de 3 px de la detección y recorte de como mucho 81 × 81 px. Un ajuste que termina en un límite se descarta como `fit_failed`. Motivo: con datos reales, ajustes sin límites divergían (FWHM de 29 px o de 0,05 px) y el recorte crecía sin fin.

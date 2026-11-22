@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Guía de desarrollo
 
-Instrucciones para el agente que trabaja en este repositorio.
+Normas para trabajar en este repositorio.
 
 ## Qué es
 
