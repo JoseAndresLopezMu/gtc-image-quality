@@ -187,6 +187,7 @@ Cada paso termina con tests en verde, se revisa antes de subirse y se anota en `
 - **Claves de cabecera distintas a las esperadas**: se resuelve en el paso 2 leyendo cabeceras reales antes de escribir código de medida.
 - **Campos con muchas galaxias o muy poblados**: el filtro de aislamiento y compacidad puede dejar pocas estrellas. Se registra y se elige otra noche si hace falta.
 - **Confundir seeing con calidad entregada**: el informe hablará siempre de "FWHM medida en la imagen", no de "seeing".
+- **Estrellas mezcladas**: dos estrellas a menos de unas 1,5 FWHM se detectan como una sola y la regla de aislamiento no puede verlas. Lo mitiga usar la mediana de muchas estrellas por fotograma.
 
 ## 12. Decisiones tomadas en la revisión
 
@@ -194,3 +195,8 @@ Cada paso termina con tests en verde, se revisa antes de subirse y se anota en `
 2. **Perfil de ajuste: Moffat**, guardando también la FWHM gaussiana para comparar.
 3. **Noches:** bloque 0037 del 19-20 de julio de 2025 como principal (sección 4.2).
 4. **Saturación:** píxeles a 65535 ADU en el crudo (sección 5.0). Se resuelve con la decisión 1.
+
+### Pendiente de decisión del autor (paso 3)
+
+5. **Elipticidad: del ajuste en lugar de por momentos.** La sección 5.3 define la elipticidad por momentos de segundo orden. Medido con estrellas sintéticas, los momentos con ventana gaussiana redonda la subestiman mucho (error de hasta 0,23 para una elipticidad real de 0,3) y no cumplen el criterio de la sección 7 (error < 0,02). La elipticidad del ajuste de Moffat sí lo cumple (error ≤ 0,011 en todo el rango). Propuesta: usar la del ajuste como medida principal y guardar la de momentos solo como referencia. El código ya lo hace así y es reversible.
+6. **Límites físicos del ajuste:** alpha de Moffat entre 0,5 y 30 px, beta entre 1,2 y 10, centro a menos de 3 px de la detección y recorte de como mucho 81 × 81 px. Un ajuste que termina en un límite se descarta como `fit_failed`. Motivo: con datos reales, ajustes sin límites divergían (FWHM de 29 px o de 0,05 px) y el recorte crecía sin fin.

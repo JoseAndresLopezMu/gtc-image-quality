@@ -8,7 +8,7 @@ Instrucciones para el agente que trabaja en este repositorio.
 
 ## Arquitectura
 
-Hecho en el paso 2:
+Hecho en los pasos 2 y 3:
 
 ```
 src/gtc_iq/
@@ -17,6 +17,9 @@ src/gtc_iq/
   fetch.py       # Descarga con httpx; congela el hash en la primera descarga
   headers.py     # Claves de cabecera de SPEC 4.4 y secciones FITS -> índices numpy
   preprocess.py  # Resta de overscan, recorte a TRIMSEC y máscara de saturación (SPEC 5.0)
+  synthetic.py   # Estrellas de Moffat con FWHM y elipticidad conocidas (paso 3)
+  stars.py       # Detección y selección de estrellas útiles (paso 3)
+  measure.py     # Ajuste de Moffat, elipticidad, fondo; resumen por fotograma (paso 3)
   cli.py         # Typer: manifest, fetch, index
 ```
 
@@ -25,9 +28,6 @@ Previsto en los pasos siguientes:
 ```
 src/gtc_iq/
   config.py      # Configuración pydantic (umbrales de QC, selección de estrellas)
-  synthetic.py   # Generador de imágenes con estrellas de FWHM y elipticidad conocidas
-  stars.py       # Detección y selección de estrellas útiles (SPEC 5.1)
-  measure.py     # FWHM (Moffat), elipticidad, fondo y saturación (SPEC 5.2-5.4)
   qc.py          # Reglas de control de calidad con motivos (SPEC 6)
   analysis.py    # Ajuste FWHM frente a masa de aire y filtro (SPEC 5.5)
   report.py      # Informe Markdown y gráficos

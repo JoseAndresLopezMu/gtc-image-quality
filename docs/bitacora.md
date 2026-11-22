@@ -43,3 +43,24 @@ Registro de cada paso: qué hizo el agente, qué revisé y qué decidí. Es la f
 **Resultado:** 32 tests en verde, sin red. Lint, formato y tipos en verde. El manifiesto del bloque 0037 tiene 52 productos: el parte de la noche habla de 54 ADP, pero la consulta exportada solo incluye 52 fotogramas de ese bloque. Queda anotado para revisarlo.
 
 **Revisión:** pendiente.
+
+## Paso 3 - Estrellas sintéticas y medidas (2026-11-21 y 22)
+
+**Agente:**
+- Escribió `synthetic.py` (estrellas de Moffat elípticas con FWHM, elipticidad y ángulo conocidos, ruido de Poisson y de lectura con la ganancia y el ruido de la cabecera de OSIRIS+), `stars.py` (detección con DAOStarFinder y selección: más de 10 σ, sin saturar, aisladas a 5 FWHM, a 20 px del borde y compactas) y `measure.py` (ajuste de Moffat elíptico y gaussiano, elipticidad por ajuste y por momentos, fondo con sigma clipping, mediana y MAD por fotograma).
+- Primera medida con sintéticos: cumplía con FWHM de 2 a 5 px, pero con estrellas de 8 px y alargadas el error llegaba al 16 %: el recorte era pequeño. Lo corrigió con un recorte que crece con la estrella y un punto de partida del ajuste a partir de la forma del núcleo. Después: error de FWHM ≤ 1,7 % y de elipticidad ≤ 0,011 en todo el rango (FWHM de 2 a 8 px, elipticidad de 0 a 0,3).
+- Encontró que la elipticidad por momentos, la que pide la SPEC, la subestima mucho (error de hasta 0,23). No cambió la definición: lo planteó como decisión del autor (SPEC, sección 12, punto 5).
+- Había puesto un filtro que descartaba estrellas poco redondas. Lo quitó antes de probarlo, porque escondería justo los problemas de guiado que el proyecto quiere detectar.
+- El test de estrellas demasiado juntas falló: una pareja a 1,5 FWHM se detecta como una sola estrella. Es una limitación real del detector; cambió el test a una pareja separable (3 FWHM) y documentó la limitación en la SPEC.
+- Adaptó el código a photutils 3, que renombró las columnas de centroides.
+
+**Prueba con datos reales (no es el paso 4, solo comprobar que funciona):**
+- La primera ejecución con una foto real no terminaba: algunos ajustes divergían (FWHM de 29 px o de 0,05 px) y el recorte crecía sin límite. Añadió límites físicos al ajuste y un tamaño máximo de recorte (SPEC, sección 12, punto 6).
+- Resultados: producto 5456875 (Sloan i, 100 s, masa de aire 1,47): 120 estrellas usadas, FWHM 1,11″ (MAD 0,24 px), elipticidad 0,098, 31 s. Producto 5456824 (Sloan z, 50 s, masa de aire 1,26): 317 estrellas, FWHM 1,14″ (MAD 0,23 px), elipticidad 0,056, 37 s.
+- Comprobó que las 1.258 detecciones descartadas por saturación son reales: 39.616 píxeles a 65535 en 2.374 zonas. Es un campo del plano galáctico con 100 s de exposición.
+
+**Para el paso 4:** entre el 33 y el 40 % de las candidatas acaban como `fit_failed`, hay que ver por qué; el ruido del fondo está inflado por el viñeteo (sin flat), así que el fondo debe medirse por zonas.
+
+**Resultado:** 54 tests en verde. Lint, formato y tipos en verde.
+
+**Revisión:** pendiente (en especial, la decisión 5 de la SPEC).
