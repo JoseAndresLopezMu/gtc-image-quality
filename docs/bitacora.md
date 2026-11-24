@@ -64,3 +64,38 @@ Registro de cada paso: qué se hizo, qué se revisó y qué se decidió. Es la f
 **Resultado:** 54 tests en verde. Lint, formato y tipos en verde.
 
 **Revisión:** acepté la decisión 5 de la SPEC (elipticidad del ajuste como medida principal).
+
+## Paso 4 - Medidas sobre los datos reales y control de calidad (2026-11-24)
+
+**Implementación:**
+- Primera medida de los 52 fotogramas con el código del paso 3. Para investigar los `fit_failed` pendientes se registró en qué límite terminaba cada ajuste. En la mayoría se iba el centro (más de 3 px) o el tamaño de la estrella. La causa: el punto de partida se tomaba del píxel más brillante del recorte, y en el 42 % de los recortes ese píxel era otra estrella, fuera del radio de aislamiento pero dentro del recorte.
+- Se reprodujo con sintéticos antes de corregirlo: con una vecina más brillante a unos 25 px, el ajuste fallaba. En un caso, además, devolvía la FWHM de la vecina como si fuera la de la estrella, sin avisar. Primero se escribieron los tests que lo reproducen (fallaban con el código anterior). Después se corrigió: el ajuste parte de la detección y deja fuera los píxeles a menos de 3 FWHM de otras fuentes detectadas (SPEC 12, punto 7).
+- Resultado en los 52 fotogramas: de las estrellas que llegan al ajuste, las descartadas bajaron del 71 % al 24 % de mediana, y las usadas pasaron de 291 a 721 por fotograma. El 33-40 % anotado en el paso 3 era el mismo problema contado sobre otra base (todas las candidatas salvo las del borde y las saturadas). La FWHM mediana de cada fotograma cambió como mucho un 1,3 %. Antes no estaba sesgada, solo desperdiciaba estrellas.
+- Lo que aún falla termina casi siempre en beta = 10 (perfil casi gaussiano). Se midió qué pasaría al ampliar el límite y no se cambió, porque solo mueve la mediana un +0,3 % (SPEC 12, punto 8).
+- Comprobación cruzada con DRAGO (SPEC 5.0) en dos fotogramas. Se descargó el ADP del producto 5456824 y el del 5456875 ya estaba. La SPEC pide una diferencia menor del 5 % en FWHM y de 0,02 en elipticidad:
+
+  | Producto | FWHM crudo | FWHM ADP | Diferencia | Elipticidad crudo / ADP |
+  |---|---|---|---|---|
+  | 5456875 (Sloan i, 100 s) | 4,319 px | 4,306 px | −0,3 % | 0,103 / 0,104 |
+  | 5456824 (Sloan z, 50 s) | 4,474 px | 4,479 px | +0,1 % | 0,064 / 0,066 |
+
+  El ADP está desplazado 1 píxel en x y en y respecto al recorte `TRIMSEC` del crudo, lo que explica que mida 2032 × 1796 frente a 2033 × 1797. Se comprobó por correlación. La máscara de saturación del crudo se trasladó con ese desplazamiento.
+- Fondo: el paso 3 atribuía al viñeteo el ruido inflado. Medido por zonas, el ruido seguía de 5 a 9 veces por encima de Poisson, y con un estimador de la mitad inferior de la distribución, de 1,5 a 3 veces. En el ADP, que tiene flat, el resultado era casi igual. La hipótesis era falsa: lo domina la confusión de estrellas débiles del plano galáctico. Se mantuvo el fondo por zonas, porque quita el gradiente, y se documentó la limitación (SPEC 5.4 y 11). Ninguna regla usa el ruido.
+- Nuevos módulos `config.py` (umbrales en `config.yaml`, con los campos desconocidos rechazados) y `qc.py` (las seis reglas de la SPEC 6, cada una con un motivo que cita el valor y el umbral). Las reglas relativas a la noche agrupan por filtro y noche, y se saltan si el grupo tiene menos de 5 fotogramas. El fondo se compara en ADU/s. Se añadieron los comandos `measure` (en paralelo con `--jobs`, escribe `frames.csv` y opcionalmente `stars.csv`) y `qc`. `measure` usa el manifiesto y comprueba los hashes, por lo que lleva `--manifest`, que no figuraba en la SPEC 8.
+- Al escribir un test de la CLI se pasó la forma de la imagen como (ancho, alto) en vez de (alto, ancho), y la mayoría de las estrellas quedaban fuera. Se corrigió el test, no el código.
+
+**Resultados con datos reales** (`gtc-iq measure` y `gtc-iq qc`, 1 min 50 s con 12 procesos):
+
+| Filtro | Fotogramas | Estrellas usadas | FWHM | Elipticidad | Fondo | Saturación |
+|---|---|---|---|---|---|---|
+| Sloan i, 100 s | 18 | 422-573 | 0,91-1,24″ (mediana 1,09″) | 0,066-0,109 | 99-130 ADU/s | 0,92-1,03 % |
+| Sloan z, 50 s | 34 | 666-819 | 0,80-1,23″ (mediana 1,05″) | 0,044-0,115 | 148-225 ADU/s | 0,33-0,39 % |
+
+- Ningún fotograma marcado por FWHM, elipticidad, fondo o pocas estrellas: fue una noche estable. Los límites de la noche eran 1,34″ y 1,38″ de FWHM, y 162 y 250 ADU/s de fondo.
+- Con el umbral inicial del 0,5 %, la regla `saturation` marcaba los 18 fotogramas de Sloan i y ninguno de Sloan z. Es una propiedad del campo con 100 s de exposición, no un problema de esos fotogramas.
+
+**Resultado:** 72 tests en verde. Lint, formato y tipos en verde.
+
+**Para el paso 5:** con una sola noche y el rango de masa de aire 1,26-1,47, la pendiente frente a la masa de aire tendrá un intervalo amplio. Conviene añadir uno o dos bloques de la sección 4.2 antes de ajustarla.
+
+**Revisión:** subí el umbral de saturación al 2 % (SPEC 12, punto 9) y mantuve el límite de beta (punto 8). Con el 2 %, ningún fotograma del bloque queda marcado.

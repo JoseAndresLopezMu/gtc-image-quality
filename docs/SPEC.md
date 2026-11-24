@@ -117,7 +117,7 @@ e = 1 − b/a, a partir de los momentos de segundo orden de cada estrella. Media
 
 ### 5.4 Fondo y saturación
 
-- Fondo: mediana con sigma clipping (3 σ) y ruido como desviación robusta.
+- Fondo: mediana con sigma clipping (3 σ) en una rejilla de 8 × 8 zonas y mediana de las zonas, para que el gradiente del viñeteo (no hay flat) no se cuente como ruido. El ruido es la mediana de las desviaciones de las zonas. En campos muy poblados incluye la contribución de estrellas débiles no resueltas (sección 11) y no se usa en ninguna regla.
 - Fracción de píxeles por encima del nivel de saturación de la cabecera.
 
 ### 5.5 Dependencia con la masa de aire y el filtro
@@ -136,7 +136,7 @@ Reglas configurables en `config.yaml`, con valores iniciales que se ajustarán a
 | `high_ellipticity` | elipticidad mediana > 0,20 | Posible problema de guiado o seguimiento |
 | `fwhm_outlier` | FWHM > mediana del mismo filtro y noche + 3 MAD | Calidad anómala respecto al resto de la noche |
 | `bright_background` | fondo > mediana del filtro + 3 MAD | Luna, crepúsculo o nubes iluminadas |
-| `saturation` | más del 0,5 % de píxeles saturados | Exposición demasiado larga para el campo |
+| `saturation` | más del 2 % de píxeles saturados (0,5 % en el borrador; ver sección 12, punto 9) | Exposición demasiado larga para el campo |
 | `unmeasurable` | falta una clave necesaria o falla el ajuste | Motivo técnico concreto |
 
 Cada fotograma recibe una lista de marcas, nunca una nota opaca. Las reglas comparan con la propia noche (mediana y MAD) en lugar de usar solo umbrales fijos, porque las condiciones cambian de una noche a otra.
@@ -153,7 +153,8 @@ Cada fotograma recibe una lista de marcas, nunca una nota opaca. Las reglas comp
 gtc-iq manifest --archive-csv data/archive_query_2025A_osiris_bbi.csv --program GTCMULTIPLE7B-25A --block 0037 --out data/manifest.csv
 gtc-iq fetch   --manifest data/manifest.csv --data data/raw      # descarga y comprueba hashes
 gtc-iq index   --manifest data/manifest.csv --data data/raw --out results/index.csv  # lee cabeceras
-gtc-iq measure --data data/raw --out results/frames.csv       # medidas por fotograma
+gtc-iq measure --manifest data/manifest.csv --data data/raw --out results/frames.csv \
+               --stars results/stars.csv --jobs 8              # medidas por fotograma y por estrella
 gtc-iq qc      --frames results/frames.csv --config config.yaml --out results/qc.csv
 gtc-iq report  --frames results/frames.csv --qc results/qc.csv --out reports/
 ```
@@ -187,6 +188,7 @@ Cada paso termina con tests en verde, se revisa antes de subirse y se anota en `
 - **Claves de cabecera distintas a las esperadas**: se resuelve en el paso 2 leyendo cabeceras reales antes de escribir código de medida.
 - **Campos con muchas galaxias o muy poblados**: el filtro de aislamiento y compacidad puede dejar pocas estrellas. Se registra y se elige otra noche si hace falta.
 - **Confundir seeing con calidad entregada**: el informe hablará siempre de "FWHM medida en la imagen", no de "seeing".
+- **Ruido del fondo en campos poblados**: en el bloque 0037 el ruido medido con la mitad inferior de la distribución es de 1,5 a 3 veces el esperado por Poisson, también en los ADP con flat. Lo dominan las estrellas débiles no resueltas del plano galáctico. Por eso el ruido se registra, pero ninguna regla depende de él.
 - **Estrellas mezcladas**: dos estrellas a menos de unas 1,5 FWHM se detectan como una sola y la regla de aislamiento no puede verlas. Lo mitiga usar la mediana de muchas estrellas por fotograma.
 
 ## 12. Decisiones tomadas en la revisión
@@ -200,3 +202,9 @@ Cada paso termina con tests en verde, se revisa antes de subirse y se anota en `
 
 5. **Elipticidad: del ajuste en lugar de por momentos.** *Decisión tomada: se adopta la propuesta.* La sección 5.3 define la elipticidad por momentos de segundo orden. Medido con estrellas sintéticas, los momentos con ventana gaussiana redonda la subestiman mucho (error de hasta 0,23 para una elipticidad real de 0,3) y no cumplen el criterio de la sección 7 (error < 0,02). La elipticidad del ajuste de Moffat sí lo cumple (error ≤ 0,011 en todo el rango). La del ajuste es la medida principal; la de momentos se guarda solo como referencia.
 6. **Límites físicos del ajuste:** alpha de Moffat entre 0,5 y 30 px, beta entre 1,2 y 10, centro a menos de 3 px de la detección y recorte de como mucho 81 × 81 px. Un ajuste que termina en un límite se descarta como `fit_failed`. Motivo: con datos reales, ajustes sin límites divergían (FWHM de 29 px o de 0,05 px) y el recorte crecía sin fin.
+
+### Decisiones del paso 4
+
+7. **Ajuste centrado en la detección y con las vecinas enmascaradas.** *Corrección de un error, no cambia la SPEC.* El punto de partida del ajuste se calculaba con el píxel más brillante del recorte. En el campo del bloque 0037 ese píxel era otra estrella en el 42 % de los recortes, y el ajuste acababa en un límite o, en sintéticos, midiendo la vecina. Ahora el centro inicial y la tolerancia de 3 px (punto 6) se toman de la detección, y se excluyen del ajuste los píxeles a menos de 3 FWHM de otra fuente detectada. De las estrellas que llegan al ajuste, las descartadas bajaron del 71 % al 24 % (medianas de los 52 fotogramas), con 2,5 veces más estrellas por fotograma. La FWHM mediana de cada fotograma cambió como mucho un 1,3 %.
+8. **Límite de beta.** *Decisión tomada: se mantiene.* La mayoría de los ajustes que siguen descartándose terminan en beta = 10 (perfil casi gaussiano). Ampliar el límite a 100 en dos fotogramas recuperaría unas 60 a 75 estrellas por fotograma y movería la FWHM mediana un +0,3 %. Por ser un efecto tan pequeño, el punto 6 no cambia.
+9. **Umbral de saturación: del 0,5 % al 2 %.** *Decisión tomada.* Con 0,5 % (sección 6) la regla `saturation` marcaba los 18 fotogramas de Sloan i de 100 s (0,92 a 1,03 % de píxeles saturados) y ninguno de Sloan z de 50 s (0,33 a 0,39 %). Es una propiedad del campo (plano galáctico) con esa exposición, no un fallo de los fotogramas: su FWHM y su elipticidad son normales. Una regla que marca todos los fotogramas de un filtro no ayuda a encontrar los dudosos. Se descartaron mantenerlo y convertir la regla en un aviso, porque eso habría añadido un nivel de gravedad que la sección 6 no define. Con el 2 % la regla queda para casos anómalos, como una exposición muy larga o un objeto muy brillante en el campo.

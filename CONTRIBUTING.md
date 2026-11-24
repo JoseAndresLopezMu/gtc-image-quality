@@ -8,7 +8,7 @@ Normas para trabajar en este repositorio.
 
 ## Arquitectura
 
-Hecho en los pasos 2 y 3:
+Hecho en los pasos 2 a 4:
 
 ```
 src/gtc_iq/
@@ -19,20 +19,22 @@ src/gtc_iq/
   preprocess.py  # Resta de overscan, recorte a TRIMSEC y máscara de saturación (SPEC 5.0)
   synthetic.py   # Estrellas de Moffat con FWHM y elipticidad conocidas (paso 3)
   stars.py       # Detección y selección de estrellas útiles (paso 3)
-  measure.py     # Ajuste de Moffat, elipticidad, fondo; resumen por fotograma (paso 3)
-  cli.py         # Typer: manifest, fetch, index
+  measure.py     # Ajuste de Moffat, elipticidad, fondo por zonas; resumen por fotograma
+  config.py      # Umbrales de control de calidad (pydantic), leídos de config.yaml (paso 4)
+  qc.py          # Reglas de control de calidad con motivos (SPEC 6, paso 4)
+  cli.py         # Typer: manifest, fetch, index, measure, qc
+config.yaml      # Umbrales de QC usados en el informe
 ```
 
-Previsto en los pasos siguientes:
+Previsto en el paso 5:
 
 ```
 src/gtc_iq/
-  config.py      # Configuración pydantic (umbrales de QC, selección de estrellas)
-  qc.py          # Reglas de control de calidad con motivos (SPEC 6)
   analysis.py    # Ajuste FWHM frente a masa de aire y filtro (SPEC 5.5)
   report.py      # Informe Markdown y gráficos
 tests/
 data/            # CSV del archivo y manifest.csv versionados; los FITS (raw/, sample/) no
+results/         # Salidas de measure y qc (no versionadas)
 ```
 
 Las medidas y las reglas son funciones puras sobre arrays de numpy y modelos pydantic. Toda la E/S (FITS, CSV, red, gráficos) vive en `archive.py`, `manifest.py`, `fetch.py`, `report.py` y `cli.py`.
