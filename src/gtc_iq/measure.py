@@ -17,6 +17,11 @@ MAX_HALF_PX = 40
 ALPHA_RANGE = (0.5, 30.0)
 BETA_RANGE = (1.2, 10.0)
 CENTRE_TOLERANCE_PX = 3.0
+CORE_RADIUS_PX = 6.0
+# Pixels closer than this to another detected source are left out of the fit. At 3 FWHM the
+# wings of a Moffat with beta 2.5 are below 0.3 % of its peak.
+NEIGHBOUR_MASK_FWHM = 3.0
+BACKGROUND_ZONES = 8
 
 
 @dataclass(frozen=True)
@@ -91,10 +96,20 @@ def moments_ellipticity(
 
 
 def _shape_guess(
-    data: NDArray[np.float64], xx: NDArray[np.float64], yy: NDArray[np.float64]
+    data: NDArray[np.float64],
+    xx: NDArray[np.float64],
+    yy: NDArray[np.float64],
+    x_det: float,
+    y_det: float,
 ) -> tuple[float, float, float, float, float]:
-    """Centre, axes and angle from the moments of the bright core, used as fit start."""
-    core = np.where(data > 0.1 * data.max(), data, 0.0)
+    """Centre, axes and angle from the moments of the bright core, used as fit start.
+
+    Only pixels near the detection count: in crowded fields the brightest pixel of the cutout
+    is often another star, and starting from it the fit ends on that star or on a limit.
+    """
+    near = np.hypot(xx - x_det, yy - y_det) <= CORE_RADIUS_PX
+    peak = float(data[near].max())
+    core = np.where(near & (data > 0.1 * peak), data, 0.0)
     total = core.sum()
     xc, yc = float((core * xx).sum() / total), float((core * yy).sum() / total)
     mxx = float((core * (xx - xc) ** 2).sum() / total)
@@ -108,15 +123,23 @@ def _shape_guess(
 
 
 def _fit_moffat(
-    stamp: NDArray[np.float64], xx: NDArray[np.float64], yy: NDArray[np.float64]
+    stamp: NDArray[np.float64],
+    xx: NDArray[np.float64],
+    yy: NDArray[np.float64],
+    x_det: float,
+    y_det: float,
+    keep: NDArray[np.bool_],
 ) -> NDArray[np.float64] | None:
-    """Fit an elliptical Moffat plus a constant background to a cutout."""
+    """Fit an elliptical Moffat plus a constant background to the kept pixels of a cutout."""
     edge = np.concatenate([stamp[0], stamp[-1], stamp[:, 0], stamp[:, -1]])
     data = stamp - float(np.median(edge))
-    peak = float(data.max())
+    near = np.hypot(xx - x_det, yy - y_det) <= CORE_RADIUS_PX
+    if not near.any():
+        return None
+    peak = float(data[near].max())
     if peak <= 0:
         return None
-    xc, yc, major, minor, theta = _shape_guess(data, xx, yy)
+    xc, yc, major, minor, theta = _shape_guess(data, xx, yy, x_det, y_det)
     beta0 = 2.5
     # Core moments of a Moffat behave roughly like a Gaussian sigma: FWHM ~ 2.3548 sigma.
     a0 = max(2.3548 * major, 1.0) / (2 * math.sqrt(2 ** (1 / beta0) - 1))
@@ -127,14 +150,14 @@ def _fit_moffat(
         model = elliptical_moffat(
             xx, yy, amp, x0, y0, math.exp(log_a), math.exp(log_b), th, 1 + math.exp(log_beta1)
         )
-        result: NDArray[np.float64] = (model + bkg - data).ravel()
+        result: NDArray[np.float64] = (model + bkg - data)[keep]
         return result
 
     lo_a, hi_a = math.log(ALPHA_RANGE[0]), math.log(ALPHA_RANGE[1])
     lo_b, hi_b = math.log(BETA_RANGE[0] - 1), math.log(BETA_RANGE[1] - 1)
     tol = CENTRE_TOLERANCE_PX
-    lower = np.array([0.0, xc - tol, yc - tol, lo_a, lo_a, -np.inf, lo_b, -np.inf])
-    upper = np.array([np.inf, xc + tol, yc + tol, hi_a, hi_a, np.inf, hi_b, np.inf])
+    lower = np.array([0.0, x_det - tol, y_det - tol, lo_a, lo_a, -np.inf, lo_b, -np.inf])
+    upper = np.array([np.inf, x_det + tol, y_det + tol, hi_a, hi_a, np.inf, hi_b, np.inf])
     start = np.array([peak, xc, yc, math.log(a0), math.log(b0), theta, math.log(beta0 - 1), 0.0])
     start = np.clip(start, lower + 1e-9, upper - 1e-9)
     fit = least_squares(residuals, start, bounds=(lower, upper), method="trf", max_nfev=500)
@@ -148,14 +171,39 @@ def _fit_moffat(
     return None if at_limit.any() else np.asarray(fit.x)
 
 
+def _keep_mask(
+    xx: NDArray[np.float64],
+    yy: NDArray[np.float64],
+    neighbours: NDArray[np.float64],
+    radius: float,
+) -> NDArray[np.bool_]:
+    keep = np.ones(xx.shape, dtype=bool)
+    for nx, ny in neighbours:
+        keep &= np.hypot(xx - nx, yy - ny) > radius
+    return keep
+
+
 def measure_star(
-    image: NDArray[np.float64], x: float, y: float, half: int = 20
+    image: NDArray[np.float64],
+    x: float,
+    y: float,
+    half: int = 20,
+    neighbours: NDArray[np.float64] | None = None,
+    fwhm_guess_px: float = 4.0,
 ) -> StarMeasurement | None:
-    """Fit one star. The cutout grows if the star turns out to be large (wings beyond 3 FWHM)."""
+    """Fit one star detected at (x, y), ignoring the pixels around other detected sources.
+
+    The cutout grows if the star turns out to be large (wings beyond 3 FWHM).
+    """
+    others = np.empty((0, 2)) if neighbours is None else np.asarray(neighbours, dtype=float)
+    radius = NEIGHBOUR_MASK_FWHM * fwhm_guess_px
     params = None
     for _ in range(3):
         stamp, xx, yy = _cutout(image, x, y, half)
-        params = _fit_moffat(stamp, xx, yy)
+        reach = half + radius
+        local = others[(np.abs(others[:, 0] - x) <= reach) & (np.abs(others[:, 1] - y) <= reach)]
+        keep = _keep_mask(xx, yy, local, radius)
+        params = _fit_moffat(stamp, xx, yy, x, y, keep)
         if params is None:
             return None
         major_fwhm = fwhm_from_alpha(math.exp(max(params[3], params[4])), 1 + math.exp(params[6]))
@@ -166,7 +214,7 @@ def measure_star(
     assert params is not None
     edge = np.concatenate([stamp[0], stamp[-1], stamp[:, 0], stamp[:, -1]])
     data = stamp - float(np.median(edge))
-    peak = float(data.max())
+    peak = float(params[0])
     _, x0, y0, log_a, log_b, theta, log_beta1, _ = params
     beta = 1 + math.exp(log_beta1)
     a, b = math.exp(log_a), math.exp(log_b)
@@ -179,7 +227,7 @@ def measure_star(
         amp, gx, gy, log_s, bkg = p
         s = math.exp(log_s)
         model = amp * np.exp(-((xx - gx) ** 2 + (yy - gy) ** 2) / (2 * s**2))
-        result: NDArray[np.float64] = (model + bkg - data).ravel()
+        result: NDArray[np.float64] = (model + bkg - data)[keep]
         return result
 
     g_lower = np.array([0.0, x0 - 3, y0 - 3, math.log(0.2), -np.inf])
@@ -210,6 +258,26 @@ def _median_mad(values: list[float]) -> tuple[float, float]:
     return median, float(1.4826 * np.median(np.abs(arr - median)))
 
 
+def zone_background(
+    image: NDArray[np.float64], zones: int = BACKGROUND_ZONES
+) -> tuple[float, float]:
+    """Sky level and noise as medians over a grid of zones.
+
+    Without a flat the vignetting makes the sky level vary across the detector, and a single
+    global standard deviation measures that slope as if it were noise. Each zone is small enough
+    for the sky to be flat inside it.
+    """
+    levels: list[float] = []
+    noises: list[float] = []
+    for rows in np.array_split(np.arange(image.shape[0]), zones):
+        for cols in np.array_split(np.arange(image.shape[1]), zones):
+            zone = image[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1]
+            _, level, noise = sigma_clipped_stats(zone, sigma=3.0)
+            levels.append(float(level))
+            noises.append(float(noise))
+    return float(np.median(levels)), float(np.median(noises))
+
+
 def measure_frame(
     image: NDArray[np.float64],
     saturated: NDArray[np.bool_],
@@ -217,15 +285,22 @@ def measure_frame(
     config: SelectionConfig | None = None,
 ) -> FrameMeasurement:
     config = config or SelectionConfig()
-    _, background, noise = sigma_clipped_stats(image, sigma=3.0)
+    background, noise = zone_background(image)
     candidates: list[Candidate] = find_stars(image, saturated, config)
     rejected: dict[str, int] = {}
     stars: list[StarMeasurement] = []
-    for c in candidates:
+    positions = np.array([(c.x, c.y) for c in candidates], dtype=float).reshape(-1, 2)
+    for i, c in enumerate(candidates):
         if c.rejected is not None:
             rejected[c.rejected] = rejected.get(c.rejected, 0) + 1
             continue
-        measured = measure_star(image, c.x, c.y)
+        measured = measure_star(
+            image,
+            c.x,
+            c.y,
+            neighbours=np.delete(positions, i, axis=0),
+            fwhm_guess_px=config.fwhm_guess_px,
+        )
         if measured is None:
             rejected["fit_failed"] = rejected.get("fit_failed", 0) + 1
         else:
