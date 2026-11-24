@@ -1,0 +1,9 @@
+# Quality-control thresholds (SPEC 6). Rules that compare with the night use the frames of the
+# same filter and night.
+qc:
+  min_stars: 5
+  max_ellipticity: 0.20
+  fwhm_outlier_mad: 3.0
+  background_outlier_mad: 3.0
+  max_saturated_fraction: 0.02
+  min_group_frames: 5
