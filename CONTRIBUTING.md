@@ -8,7 +8,7 @@ Normas para trabajar en este repositorio.
 
 ## Arquitectura
 
-Hecho en los pasos 2 a 4:
+Estructura:
 
 ```
 src/gtc_iq/
@@ -17,27 +17,22 @@ src/gtc_iq/
   fetch.py       # Descarga con httpx; congela el hash en la primera descarga
   headers.py     # Claves de cabecera de SPEC 4.4 y secciones FITS -> índices numpy
   preprocess.py  # Resta de overscan, recorte a TRIMSEC y máscara de saturación (SPEC 5.0)
-  synthetic.py   # Estrellas de Moffat con FWHM y elipticidad conocidas (paso 3)
-  stars.py       # Detección y selección de estrellas útiles (paso 3)
+  synthetic.py   # Estrellas de Moffat con FWHM y elipticidad conocidas
+  stars.py       # Detección y selección de estrellas útiles
   measure.py     # Ajuste de Moffat, elipticidad, fondo por zonas; resumen por fotograma
-  config.py      # Umbrales de control de calidad (pydantic), leídos de config.yaml (paso 4)
-  qc.py          # Reglas de control de calidad con motivos (SPEC 6, paso 4)
-  cli.py         # Typer: manifest, fetch, index, measure, qc
-config.yaml      # Umbrales de QC usados en el informe
-```
-
-Previsto en el paso 5:
-
-```
-src/gtc_iq/
-  analysis.py    # Ajuste FWHM frente a masa de aire y filtro (SPEC 5.5)
+  config.py      # Umbrales de control de calidad (pydantic), leídos de config.yaml
+  qc.py          # Reglas de control de calidad con motivos (SPEC 6)
+  analysis.py    # Pendiente frente a masa de aire, cociente entre filtros y correlaciones (SPEC 5.5)
   report.py      # Informe Markdown y gráficos
+  cli.py         # Typer: manifest, fetch, index, measure, qc, report
+config.yaml      # Umbrales de QC usados en el informe
 tests/
 data/            # CSV del archivo y manifest.csv versionados; los FITS (raw/, sample/) no
 results/         # Salidas de measure y qc (no versionadas)
+reports/         # Informe generado (no versionado)
 ```
 
-Las medidas y las reglas son funciones puras sobre arrays de numpy y modelos pydantic. Toda la E/S (FITS, CSV, red, gráficos) vive en `archive.py`, `manifest.py`, `fetch.py`, `report.py` y `cli.py`.
+Las medidas y las reglas son funciones puras sobre arrays de numpy y modelos pydantic. Toda la E/S (FITS, CSV, red, gráficos) vive en `archive.py`, `manifest.py`, `fetch.py`, `report.py` y `cli.py`; `analysis.py` solo hace cálculos.
 
 ## Comandos
 

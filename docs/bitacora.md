@@ -99,3 +99,44 @@ Registro de cada paso: qué se hizo, qué se revisó y qué se decidió. Es la f
 **Para el paso 5:** con una sola noche y el rango de masa de aire 1,26-1,47, la pendiente frente a la masa de aire tendrá un intervalo amplio. Conviene añadir uno o dos bloques de la sección 4.2 antes de ajustarla.
 
 **Revisión:** subí el umbral de saturación al 2 % (SPEC 12, punto 9) y mantuve el límite de beta (punto 8). Con el 2 %, ningún fotograma del bloque queda marcado.
+
+## Paso 5 - Análisis frente a masa de aire y filtro, e informe (2026-11-26)
+
+**Implementación:**
+- Primero se miró qué decían los datos del bloque 0037 antes de escribir código. La pendiente frente a la masa de aire salía negativa (−0,26 en Sloan i y −1,65 en z): durante esa noche la masa de aire subía mientras la FWHM bajaba. Con un rango de 1,26 a 1,47 la teoría solo predice un cambio del 6-8 %, y la turbulencia cambió más que eso a lo largo de la noche. Por eso se añadieron los tres bloques de la sección 4.2 de la SPEC, como recomendaba el paso 4.
+- Para juntar varios bloques en un manifiesto se añadió `manifest --append`. Se descargaron los 80 crudos nuevos (132 en total, cada uno con su hash congelado) y se midieron los 132 fotogramas en 3 min 15 s con 12 procesos.
+- Nuevo módulo `analysis.py` con funciones puras: ajuste de log(FWHM) frente a log(masa de aire) por filtro, con todas las noches juntas y dentro de cada noche, con intervalo del 95 %; cociente de FWHM entre z e i con parejas cercanas en el tiempo; correlaciones de Spearman con las condiciones de la cabecera. Cada cálculo tiene tests con respuesta conocida: una ley de potencia exacta da 0,6, y dos noches con turbulencia distinta dan una pendiente negativa al juntarlas y 0,6 dentro de cada noche.
+- Las longitudes de onda de los filtros no están en la cabecera. Se tomaron de la tabla de OSIRIS+ de la web del GTC (SPEC 12, punto 12).
+- Nuevo módulo `report.py` y comando `report`: informe en Markdown con cuatro gráficos, la tabla por fotograma, los marcados con su motivo y miniatura, la configuración y el hash del manifiesto. Un test comprueba que dos ejecuciones dan ficheros idénticos, y se comprobó también con los datos reales.
+- Error propio encontrado al leer el primer informe con las cuatro noches: la correlación de cada variable "con la hora" usaba la fecha completa. Con noches de marzo y julio, medía la estación del año. Se escribió primero un test que lo reproduce y después se cambió a las horas desde el mediodía de cada noche.
+- Error del paso 4 encontrado con los datos nuevos: un motivo decía "ellipticity 0.2 > 0.2" porque el valor (0,2003) se mostraba con tres cifras. Primero el test, después la corrección: ahora se muestran cuatro cifras.
+
+**Control de calidad con las cuatro noches:** 25 de 132 fotogramas marcados (ninguno en el bloque 0037). Se miraron las miniaturas de los 25 (SPEC 7) y, para el fondo, se calculó con astropy la altura del Sol y de la Luna en cada fotograma con las coordenadas de la cabecera.
+
+| Regla | Fotogramas | Qué se ve |
+|---|---|---|
+| `bright_background` | 15 | 14-15 de marzo: Luna llena (99 %) a 18° del objeto y el Sol de −20° a −18°, al empezar el crepúsculo; el último fotograma, con el Sol a −18,2°, es el de fondo más alto. 9-10 de marzo: noche cerrada (Sol a −65°) y Luna al 83 % a 61°, bajando; el fondo salta un 45 % en un minuto y fluctúa, a la vez que se pierden estrellas. Es compatible con nubes iluminadas por la Luna. |
+| `few_stars` | 4 | 5107900: todas las estrellas salen dobles, con el mismo desplazamiento; el telescopio se movió durante la exposición. 5092913 y 5092914: estrellas hinchadas respecto al fotograma anterior y más de la mitad de los ajustes fallan. 5092909: las detecciones bajan de 106 a 30 y cruza la traza de un satélite. |
+| `high_ellipticity` | 4 | Tres del 14-15 de marzo con 0,20-0,22, en la misma secuencia del fondo brillante, y uno del 28 de julio con 0,2003, en el límite. |
+| `fwhm_outlier` | 3 | Dos del 9 de marzo calculados con solo 5 y 7 estrellas, y uno del 28 de julio (0,98″ frente a un límite de 0,95″). |
+
+Las miniaturas no permiten decir si hay nubes: sin flat, el fondo de los fotogramas de marzo tiene manchas también en los no marcados. Las marcas de fondo se explican con lo que se mide (el nivel del fondo) y con la posición de la Luna y el Sol, no con el aspecto de la imagen. Los fotogramas en el límite del umbral (0,2003 de elipticidad, 0,98″ frente a 0,95″) no tienen nada raro a la vista; los umbrales siguen como estaban.
+
+**Resultados del análisis** (107 fotogramas sin marcar, cuatro noches):
+
+| Filtro | Ajuste | Masa de aire | Pendiente (IC 95 %) | Teoría |
+|---|---|---|---|---|
+| Sloan i | todas las noches | 1,04-1,95 | 0,74 (0,60 a 0,88) | 0,6 |
+| Sloan i | dentro de cada noche | | −0,34 (−1,01 a 0,34) | 0,6 |
+| Sloan z | todas las noches | 1,26-1,91 | 0,49 (0,26 a 0,72) | 0,6 |
+| Sloan z | dentro de cada noche | | −1,50 (−2,37 a −0,63) | 0,6 |
+
+- Entre noches, la FWHM crece con la masa de aire como predice la teoría, pero con tres noches por filtro no se puede descartar que sea casualidad: las noches de mayor masa de aire (marzo) también pudieron tener peor turbulencia. Dentro de cada noche, la evolución de la turbulencia (del 5 al 18 % de dispersión) tapa el efecto de la masa de aire, que en esos rangos es del 1 al 8 %.
+- Cociente z/i corregido al cénit: 1,022 ± 0,018 con 28 parejas, frente a 0,955 esperado. Por noches: 1,05 ± 0,05 el 9 de marzo y 1,00 ± 0,02 el 19 de julio. La FWHM en z no es menor que en i, como predice la ley λ^−0,2. Posibles causas, sin comprobar: una parte de la FWHM que no depende de la longitud de onda (óptica, enfoque o seguimiento), que las exposiciones en z son más cortas, o el efecto de la escala externa de la turbulencia, que en telescopios grandes reduce la dependencia con λ. Queda abierto.
+- Viento: en Sloan i, ρ = 0,76 con la FWHM, pero lo arrastra la noche del 28 de julio (viento de 0,3 a 1,2 m/s y la mejor FWHM, 0,81″); el viento también cambia con la hora (ρ = 0,64). En Sloan z la correlación es débil (0,24). El foco y la elevación tampoco dan una relación clara. Con cuatro noches no se pueden separar causas.
+
+**Resultado:** 86 tests en verde. Lint, formato y tipos en verde.
+
+**Revisión:** acepté las decisiones 10 a 12 de la SPEC (dos ajustes frente a la masa de aire, opciones nuevas de la CLI y longitudes de onda de la web del GTC).
+
+**Al revisar:** en el gráfico de masa de aire los fotogramas marcados llevaban borde negro sin explicarlo en la leyenda; se añadió.

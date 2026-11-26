@@ -54,7 +54,15 @@ Bloque principal: programa `GTCMULTIPLE7B-25A`, bloque `0037`, objeto `GRB250702
 - Masa de aire de 1,26 a 1,47 a lo largo de la noche.
 - Es un seguimiento de un estallido de rayos gamma en el plano galáctico: campo con muchas estrellas, bueno para medir la FWHM.
 
-Para ampliar el rango de masa de aire en el análisis 5.5 se añadirán, si el tiempo lo permite, bloques de otras noches del mismo CSV: `GRB250314A` (1,51 a 1,71), `250215A` (1,85 a 2,03) y `250704a` del 29 de julio (1,04 a 1,05).
+Para ampliar el rango de masa de aire en el análisis 5.5 se añadieron en el paso 5 tres bloques de otras noches del mismo CSV:
+
+| Programa y bloque | Objeto | Noche | Fotogramas | Filtros | Masa de aire |
+|---|---|---|---|---|---|
+| `GTCMULTIPLE7B-25A` 0001 | `250215A` | 9-10 de marzo de 2025 | 30 | Sloan i (120 s) y z (50 s) | 1,85 a 2,03 |
+| `GTCMULTIPLE4G-25A` 0004 | `GRB250314A` | 14-15 de marzo de 2025 | 31 | Sloan z (30 s) | 1,51 a 1,71 |
+| `GTCMULTIPLE7B-25A` 0038 | `250704a` | 28-29 de julio de 2025 | 19 | Sloan i (90 y 10 s) | 1,04 a 1,05 |
+
+Son campos fuera del plano galáctico, con muchas menos estrellas que el bloque 0037 (de 5 a 90 por fotograma en los de marzo). Con ellos el manifiesto tiene 132 productos de cuatro noches.
 
 ### 4.3 Manifiesto y descarga
 
@@ -122,9 +130,16 @@ e = 1 − b/a, a partir de los momentos de segundo orden de cada estrella. Media
 
 ### 5.5 Dependencia con la masa de aire y el filtro
 
-Con todos los fotogramas válidos se ajusta log(FWHM) frente a log(masa de aire) por filtro y se compara la pendiente con el valor teórico 0,6. No se espera un ajuste perfecto: el objetivo es comprobar si los datos se comportan como predice la física y documentar las desviaciones.
+Con todos los fotogramas válidos (los marcados por el control de calidad no entran) se ajusta log(FWHM) frente a log(masa de aire) por filtro, con mínimos cuadrados, y se compara la pendiente con el valor teórico 0,6. Se dan dos ajustes con su intervalo de confianza del 95 %:
 
-Como las cabeceras incluyen la meteorología y el estado del telescopio en cada exposición, el informe mostrará también la FWHM frente a la velocidad y la dirección del viento, la elevación y la posición de foco (`AG1FOCUS`). Es un análisis exploratorio: con una o pocas noches no permite separar causas, pero muestra cómo se haría con el histórico completo del telescopio.
+- **Todas las noches juntas.** Usa todo el rango de masa de aire, pero mezcla la masa de aire con la turbulencia de cada noche.
+- **Dentro de cada noche.** Cada noche tiene su propio nivel y solo cuenta cómo cambia la FWHM con la masa de aire durante la noche. No le afectan las diferencias entre noches, pero sí la evolución de la turbulencia a lo largo de cada una.
+
+No se espera un ajuste perfecto: el objetivo es comprobar si los datos se comportan como predice la física y documentar las desviaciones.
+
+**Longitud de onda.** El cociente de FWHM entre Sloan z y Sloan i se mide con parejas de fotogramas tomados con menos de 10 minutos de diferencia y corregidos al cénit con el exponente 0,6. Así se quita casi todo el cambio de la turbulencia durante la noche, que es mucho mayor que el efecto buscado (un 5 %). El cociente esperado es (λz/λi)^−0,2 con las longitudes de onda centrales de la tabla de imagen de banda ancha de OSIRIS+ en la web del GTC (https://www.gtc.iac.es/instruments/osiris+/osiris+.php, consultada el 2026-11-26): 770,5 nm para Sloan i y 969,5 nm para Sloan z. No están en la cabecera.
+
+Como las cabeceras incluyen la meteorología y el estado del telescopio en cada exposición, el informe muestra también la FWHM corregida al cénit frente a la velocidad y la dirección del viento, la elevación, la posición de foco (`AG1FOCUS`) y la humedad, con la correlación de rangos de Spearman. Junto a cada una se da la correlación de la misma variable con la hora de la noche: si la variable deriva durante la noche, su correlación con la FWHM puede deberse a cualquier otra cosa que también cambie con la hora. Es un análisis exploratorio: con pocas noches no permite separar causas, pero muestra cómo se haría con el histórico completo del telescopio.
 
 ## 6. Control de calidad
 
@@ -151,15 +166,17 @@ Cada fotograma recibe una lista de marcas, nunca una nota opaca. Las reglas comp
 
 ```
 gtc-iq manifest --archive-csv data/archive_query_2025A_osiris_bbi.csv --program GTCMULTIPLE7B-25A --block 0037 --out data/manifest.csv
+gtc-iq manifest ... --block 0001 --out data/manifest.csv --append   # añade otro bloque y conserva los hashes
 gtc-iq fetch   --manifest data/manifest.csv --data data/raw      # descarga y comprueba hashes
 gtc-iq index   --manifest data/manifest.csv --data data/raw --out results/index.csv  # lee cabeceras
 gtc-iq measure --manifest data/manifest.csv --data data/raw --out results/frames.csv \
                --stars results/stars.csv --jobs 8              # medidas por fotograma y por estrella
 gtc-iq qc      --frames results/frames.csv --config config.yaml --out results/qc.csv
-gtc-iq report  --frames results/frames.csv --qc results/qc.csv --out reports/
+gtc-iq report  --frames results/frames.csv --qc results/qc.csv --config config.yaml \
+               --manifest data/manifest.csv --data data/raw --out reports/
 ```
 
-El informe (Markdown con gráficos PNG) incluye: tabla por fotograma, FWHM frente a masa de aire por filtro con el ajuste, histograma de elipticidad, fotogramas marcados con sus motivos y miniaturas, configuración usada, versión del paquete y hash del manifiesto.
+El informe (Markdown con gráficos PNG) incluye: tabla por fotograma, FWHM frente a masa de aire por filtro con el ajuste, FWHM y masa de aire a lo largo de cada noche, cociente entre filtros, FWHM frente a las condiciones de la cabecera, histograma de elipticidad, fotogramas marcados con sus motivos y miniaturas, configuración usada, versión del paquete y hash del manifiesto. No lleva la fecha de generación y los PNG se guardan sin metadatos variables: con la misma entrada, los ficheros son idénticos.
 
 ## 9. Stack
 
@@ -208,3 +225,9 @@ Cada paso termina con tests en verde, se revisa antes de subirse y se anota en `
 7. **Ajuste centrado en la detección y con las vecinas enmascaradas.** *Corrección de un error, no cambia la SPEC.* El punto de partida del ajuste se calculaba con el píxel más brillante del recorte. En el campo del bloque 0037 ese píxel era otra estrella en el 42 % de los recortes, y el ajuste acababa en un límite o, en sintéticos, midiendo la vecina. Ahora el centro inicial y la tolerancia de 3 px (punto 6) se toman de la detección, y se excluyen del ajuste los píxeles a menos de 3 FWHM de otra fuente detectada. De las estrellas que llegan al ajuste, las descartadas bajaron del 71 % al 24 % (medianas de los 52 fotogramas), con 2,5 veces más estrellas por fotograma. La FWHM mediana de cada fotograma cambió como mucho un 1,3 %.
 8. **Límite de beta.** *Decisión tomada: se mantiene.* La mayoría de los ajustes que siguen descartándose terminan en beta = 10 (perfil casi gaussiano). Ampliar el límite a 100 en dos fotogramas recuperaría unas 60 a 75 estrellas por fotograma y movería la FWHM mediana un +0,3 %. Por ser un efecto tan pequeño, el punto 6 no cambia.
 9. **Umbral de saturación: del 0,5 % al 2 %.** *Decisión tomada.* Con 0,5 % (sección 6) la regla `saturation` marcaba los 18 fotogramas de Sloan i de 100 s (0,92 a 1,03 % de píxeles saturados) y ninguno de Sloan z de 50 s (0,33 a 0,39 %). Es una propiedad del campo (plano galáctico) con esa exposición, no un fallo de los fotogramas: su FWHM y su elipticidad son normales. Una regla que marca todos los fotogramas de un filtro no ayuda a encontrar los dudosos. Se descartaron mantenerlo y convertir la regla en un aviso, porque eso habría añadido un nivel de gravedad que la sección 6 no define. Con el 2 % la regla queda para casos anómalos, como una exposición muy larga o un objeto muy brillante en el campo.
+
+### Decisiones del paso 5
+
+10. **Dos ajustes frente a la masa de aire.** *Decisión tomada.* Con varias noches, un único ajuste mezcla la masa de aire con la turbulencia de cada noche, y uno por noche no tiene rango de masa de aire (como mucho 1,26 a 1,47). Se dan los dos, con su intervalo (sección 5.5). Ninguno separa por sí solo la masa de aire de la turbulencia; con el histórico del telescopio el ajuste dentro de cada noche sería el bueno.
+11. **Opciones nuevas en la CLI.** *Decisión tomada.* `manifest --append` para juntar varios bloques en un manifiesto. `report` lleva además `--config` y `--manifest`, porque el informe copia la configuración y el hash del manifiesto (sección 8), y `--data`, opcional, para las miniaturas de los fotogramas marcados.
+12. **Longitudes de onda de los filtros.** *Decisión tomada.* No están en la cabecera. Se toman de la tabla de OSIRIS+ de la web del GTC (sección 5.5). El texto de esa página da también valores nominales redondeados (7800 Å y 9250 Å); se usan los de la tabla. Con los nominales el cociente esperado sería 0,967 en vez de 0,955, y no cambia la conclusión.
