@@ -50,13 +50,21 @@ def manifest(
     program: Annotated[str, typer.Option(help="Program ID, e.g. GTCMULTIPLE7B-25A")],
     block: Annotated[str, typer.Option(help="Observing block, e.g. 0037")],
     out: Annotated[Path, typer.Option(help="Manifest CSV to write")],
+    append: Annotated[
+        bool, typer.Option(help="Add the block to an existing manifest, keeping its hashes")
+    ] = False,
 ) -> None:
     """Build a manifest with the raw frames of one observing block."""
     rows = select_block(read_archive_csv(archive_csv), program, block)
     if not rows:
         raise typer.BadParameter(f"no products for {program} block {block}")
-    write_manifest(build_manifest(rows), out)
-    typer.echo(f"{len(rows)} products written to {out}")
+    entries = build_manifest(rows)
+    if append and out.exists():
+        existing = read_manifest(out)
+        known = {entry.product_id for entry in existing}
+        entries = existing + [entry for entry in entries if entry.product_id not in known]
+    write_manifest(entries, out)
+    typer.echo(f"{len(rows)} products of block {block}, {len(entries)} in {out}")
 
 
 @app.command()
