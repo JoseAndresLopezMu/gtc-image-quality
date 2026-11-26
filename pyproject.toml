@@ -44,6 +44,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 # Contains a row copied verbatim from the archive CSV, with long URLs.
 "tests/test_archive_manifest.py" = ["E501"]
+# The report is written in Spanish with scientific symbols (rho, minus sign).
+"src/gtc_iq/report.py" = ["RUF001"]
 
 [tool.mypy]
 strict = true

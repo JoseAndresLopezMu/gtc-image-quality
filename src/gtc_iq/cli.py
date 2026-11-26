@@ -3,6 +3,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
+from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated
 
@@ -24,6 +25,7 @@ from gtc_iq.manifest import (
 from gtc_iq.measure import measure_frame
 from gtc_iq.preprocess import prepare_raw
 from gtc_iq.qc import FrameQCInput, apply_rules
+from gtc_iq.report import read_qc, read_records, save_thumbnail, write_report
 
 app = typer.Typer(help="Measure image quality of GTC OSIRIS+ frames.", no_args_is_help=True)
 
@@ -282,3 +284,48 @@ def qc(
         for flag in r.flags:
             typer.echo(f"{r.product_id} {flag.rule}: {flag.reason}")
     typer.echo(f"{len(flagged)}/{len(results)} frames flagged, written to {out}")
+
+
+@app.command()
+def report(
+    frames: Annotated[Path, typer.Option(help="Per-frame CSV written by measure")],
+    qc: Annotated[Path, typer.Option(help="QC CSV written by qc")],
+    config: Annotated[Path, typer.Option(help="YAML used by qc, copied into the report")],
+    manifest: Annotated[Path, typer.Option(help="Manifest CSV, whose hash goes in the report")],
+    out: Annotated[Path, typer.Option(help="Directory for report.md and the figures")],
+    data: Annotated[
+        Path | None, typer.Option(help="Raw frames, for thumbnails of the flagged frames")
+    ] = None,
+) -> None:
+    """Write the Markdown report with the airmass and wavelength analysis (SPEC 5.5 and 8)."""
+    qc_rows = read_qc(qc)
+    records, unmeasured = read_records(frames, qc_rows)
+    out.mkdir(parents=True, exist_ok=True)
+    thumbnails: dict[int, Path] = {}
+    if data is not None:
+        for row in qc_rows.values():
+            path = data / f"raw_{row.product_id}.fits.gz"
+            if row.passed or not path.exists():
+                continue
+            with fits.open(path) as hdul:
+                raw, header = hdul[0].data, hdul[0].header
+            try:
+                prepared = prepare_raw(raw, parse_header(header))
+            except HeaderError:
+                continue
+            thumbnails[row.product_id] = out / f"thumb_{row.product_id}.png"
+            save_thumbnail(
+                prepared.image, f"{row.product_id}: {row.flags}", thumbnails[row.product_id]
+            )
+    path = write_report(
+        out,
+        records,
+        unmeasured,
+        qc_rows,
+        load_config(config),
+        config.read_text(encoding="utf-8"),
+        sha256_of(manifest),
+        version("gtc-image-quality"),
+        thumbnails,
+    )
+    typer.echo(f"{len(records)} frames in the report, written to {path}")

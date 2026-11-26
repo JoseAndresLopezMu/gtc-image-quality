@@ -111,3 +111,29 @@ def test_measure_then_qc(tmp_path: Path, raw_header: Header) -> None:
     assert "0.05" in qc_rows["1"]["reasons"]
     assert qc_rows["3"]["flags"] == "unmeasurable"
     assert "3/3 frames flagged" in result.output
+
+
+def test_report_after_qc(tmp_path: Path, raw_header: Header) -> None:
+    data = tmp_path / "raw"
+    data.mkdir()
+    for i in (1, 2):
+        _raw_frame(data / f"raw_{i}.fits.gz", raw_header, airmass=1.2 + 0.1 * i, seed=i)
+    manifest = _manifest(tmp_path, [1, 2])
+    frames, qc_out, out = tmp_path / "frames.csv", tmp_path / "qc.csv", tmp_path / "report"
+    config = tmp_path / "config.yaml"
+    config.write_text("qc:\n  max_ellipticity: 0.05\n", encoding="utf-8")
+    args = ["--manifest", str(manifest), "--data", str(data)]
+    assert runner.invoke(app, ["measure", *args, "--out", str(frames)]).exit_code == 0
+    qc_args = ["--frames", str(frames), "--config", str(config), "--out", str(qc_out)]
+    assert runner.invoke(app, ["qc", *qc_args]).exit_code == 0
+
+    report_args = ["--frames", str(frames), "--qc", str(qc_out), "--config", str(config)]
+    result = runner.invoke(app, ["report", *report_args, *args, "--out", str(out)])
+
+    assert result.exit_code == 0, result.output
+    text = (out / "report.md").read_text(encoding="utf-8")
+    assert sha256_of(manifest) in text
+    assert "max_ellipticity: 0.05" in text
+    assert "| 1 | high_ellipticity |" in text
+    assert (out / "thumb_1.png").exists()
+    assert "(thumb_1.png)" in text
