@@ -60,7 +60,7 @@ def _median_mad(values: list[float]) -> tuple[float, float]:
 
 
 def _fmt(value: float) -> str:
-    return f"{value:.3g}"
+    return f"{value:.4g}"
 
 
 def apply_rules(frames: list[FrameQCInput], config: QCConfig) -> list[FrameQC]:

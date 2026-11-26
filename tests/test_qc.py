@@ -137,3 +137,10 @@ def test_config_reads_yaml_and_rejects_unknown_keys(tmp_path: Path) -> None:
 def test_repository_config_matches_the_defaults() -> None:
     repo_config = Path(__file__).resolve().parents[1] / "config.yaml"
     assert load_config(repo_config) == QCConfig()
+
+
+def test_reason_shows_enough_digits_to_tell_value_and_threshold_apart() -> None:
+    # Found with real data: an ellipticity of 0.2003 was reported as "0.2 > 0.2".
+    frames = [*_night(), _frame(70, ellipticity=0.2003)]
+    [flag] = _rules(apply_rules(frames, QCConfig()), 70)
+    assert "0.2003 > 0.2" in flag.reason
